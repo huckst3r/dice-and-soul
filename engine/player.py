@@ -12,7 +12,10 @@ BASE_CHA = 9
 @dataclass
 class Player:
     hp: int = 20
+    max_hp: int = 20
     attack_bonus: int = 2
+    level: int = 1
+    xp: int = 0
     current_room: str = "hall"
     str_stat: int = BASE_STR
     dex_stat: int = BASE_DEX
@@ -20,6 +23,7 @@ class Player:
     cha_stat: int = BASE_CHA
     character_class: CharacterClass = field(default_factory=lambda: WARRIOR)
     ability_cooldowns: dict[str, int] = field(default_factory=dict)
+    known_abilities: list[str] = field(default_factory=lambda: list(WARRIOR.starting_abilities))
     inventory: list[Item] = field(
         default_factory=lambda: [Item(name="rusty sword", description="Old but usable blade")]
     )
@@ -33,10 +37,11 @@ class Player:
         self.dex_stat = BASE_DEX + character_class.dex_bonus
         self.int_stat = BASE_INT + character_class.int_bonus
         self.cha_stat = BASE_CHA + character_class.cha_bonus
+        self.known_abilities = list(character_class.starting_abilities)
         self.ability_cooldowns = {
             name: turns
             for name, turns in self.ability_cooldowns.items()
-            if name in character_class.starting_abilities
+            if name in self.known_abilities
         }
 
     @staticmethod

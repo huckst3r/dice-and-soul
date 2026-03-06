@@ -17,6 +17,11 @@ from world.rooms import Room
 
 class Game:
     SAVE_PATH = Path("savegame.json")
+    CLASS_UNLOCKS: dict[str, dict[int, str]] = {
+        "warrior": {3: "backstab"},
+        "rogue": {3: "firebolt"},
+        "mage": {3: "power_attack"},
+    }
 
     def __init__(self) -> None:
         self.rooms = create_world()
@@ -34,6 +39,7 @@ class Game:
                 description="Old guard asks you to clear the crypt.",
                 objective="kill_skeleton_in_crypt",
                 reward="guard's charm",
+                xp_reward=100,
                 status="active",
             )
         }
@@ -81,6 +87,7 @@ class Game:
             "attack": enemy.attack,
             "defense": enemy.defense,
             "description": enemy.description,
+            "xp_reward": enemy.xp_reward,
             "max_hp": enemy.max_hp,
         }
 
@@ -94,6 +101,7 @@ class Game:
             attack=int(data.get("attack", 1)),
             defense=int(data.get("defense", 10)),
             description=data.get("description", ""),
+            xp_reward=int(data.get("xp_reward", 35)),
             max_hp=int(data.get("max_hp", data.get("hp", 1))),
         )
 
@@ -104,6 +112,7 @@ class Game:
             "description": quest.description,
             "objective": quest.objective,
             "reward": quest.reward,
+            "xp_reward": quest.xp_reward,
             "status": quest.status,
         }
 
@@ -114,6 +123,7 @@ class Game:
             description=data.get("description", ""),
             objective=data.get("objective", ""),
             reward=data.get("reward", ""),
+            xp_reward=int(data.get("xp_reward", 50)),
             status=data.get("status", "active"),
         )
 
@@ -186,10 +196,14 @@ class Game:
         data = {
             "player": {
                 "hp": self.player.hp,
+                "max_hp": self.player.max_hp,
                 "attack_bonus": self.player.attack_bonus,
+                "level": self.player.level,
+                "xp": self.player.xp,
                 "current_room": self.player.current_room,
                 "character_class": self.player.character_class.name,
                 "ability_cooldowns": self.player.ability_cooldowns,
+                "known_abilities": self.player.known_abilities,
                 "str_stat": self.player.str_stat,
                 "dex_stat": self.player.dex_stat,
                 "int_stat": self.player.int_stat,
@@ -230,12 +244,16 @@ class Game:
 
         player_data = data.get("player", {})
         self.player.hp = int(player_data.get("hp", 20))
+        self.player.max_hp = int(player_data.get("max_hp", 20))
         self.player.attack_bonus = int(player_data.get("attack_bonus", 2))
+        self.player.level = int(player_data.get("level", 1))
+        self.player.xp = int(player_data.get("xp", 0))
         self.player.current_room = player_data.get("current_room", "hall")
         self.player.assign_class(get_character_class(player_data.get("character_class", "warrior")))
         self.player.ability_cooldowns = {
             k: int(v) for k, v in player_data.get("ability_cooldowns", {}).items()
         }
+        self.player.known_abilities = list(player_data.get("known_abilities", self.player.character_class.starting_abilities))
         self.player.str_stat = int(player_data.get("str_stat", 12))
         self.player.dex_stat = int(player_data.get("dex_stat", 11))
         self.player.int_stat = int(player_data.get("int_stat", 10))
@@ -367,6 +385,7 @@ class Game:
             description=template.description,
             objective=template.objective,
             reward=template.reward,
+            xp_reward=template.xp_reward,
             status="active",
         )
         print(f"Quest accepted: {template.name}")
@@ -376,6 +395,42 @@ class Game:
             crypt = self.rooms["crypt"]
             return bool(crypt.enemy and crypt.enemy.hp <= 0)
         return False
+
+    def xp_needed_for_next_level(self) -> int:
+        return self.player.level * 100
+
+    def _try_unlock_ability(self) -> None:
+        class_name = self.player.character_class.name.lower()
+        unlocks_for_class = self.CLASS_UNLOCKS.get(class_name, {})
+        unlocked_ability = unlocks_for_class.get(self.player.level)
+        if unlocked_ability and unlocked_ability not in self.player.known_abilities:
+            self.player.known_abilities.append(unlocked_ability)
+            print(f"New ability unlocked: {unlocked_ability}")
+
+    def _level_up(self) -> None:
+        self.player.level += 1
+        self.player.max_hp += 5
+        self.player.hp = self.player.max_hp
+
+        stat_choices = ["str_stat", "dex_stat", "int_stat", "cha_stat"]
+        chosen_stat = stat_choices[roll(len(stat_choices)) - 1]
+        setattr(self.player, chosen_stat, getattr(self.player, chosen_stat) + 1)
+
+        stat_name = chosen_stat.replace("_stat", "").upper()
+        print(f"*** Level up! You reached level {self.player.level}. ***")
+        print(f"Max HP increased to {self.player.max_hp}. HP fully restored.")
+        print(f"{stat_name} increased by 1.")
+
+        self._try_unlock_ability()
+
+    def gain_xp(self, amount: int, source: str) -> None:
+        if amount <= 0:
+            return
+        self.player.xp += amount
+        print(f"You gain {amount} XP from {source}. (Total XP: {self.player.xp})")
+        while self.player.xp >= self.xp_needed_for_next_level():
+            self.player.xp -= self.xp_needed_for_next_level()
+            self._level_up()
 
     def complete_quest(self, quest_name: str) -> None:
         quest_name = quest_name.strip().lower()
@@ -395,6 +450,7 @@ class Game:
         self.player.inventory.append(reward_item)
         print(f"Quest completed: {quest.name}")
         print(f"You receive reward: {quest.reward}")
+        self.gain_xp(quest.xp_reward, f"completing quest '{quest.name}'")
 
     def look_object(self, object_name: str) -> None:
         room = self.rooms[self.player.current_room]
@@ -428,7 +484,7 @@ class Game:
             print(f"Unknown ability '{ability_name}'.")
             return
 
-        if ability.name not in self.player.character_class.starting_abilities:
+        if ability.name not in self.player.known_abilities:
             print(f"Your class cannot use '{ability.name}'.")
             return
 
@@ -452,6 +508,7 @@ class Game:
         print(message)
         if enemy.hp <= 0:
             print(f"{enemy.name} is defeated!")
+            self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
             return
 
         enemy_damage = max(0, roll(enemy.attack) - self.player.dex_mod)
@@ -547,9 +604,13 @@ class Game:
             print("There is nothing to attack.")
             return
 
-        messages, _ = player_attack(self.player, room)
+        enemy_name = room.enemy.name
+        enemy_xp = room.enemy.xp_reward
+        messages, defeated = player_attack(self.player, room)
         for message in messages:
             print(message)
+        if defeated:
+            self.gain_xp(enemy_xp, f"defeating {enemy_name}")
 
     def use_potion(self) -> None:
         potion = self._find_item_by_name(self.player.inventory, "healing potion")
@@ -558,15 +619,16 @@ class Game:
             return
         self.player.inventory.remove(potion)
         heal = roll(8)
-        self.player.hp = min(20, self.player.hp + heal)
+        self.player.hp = min(self.player.max_hp, self.player.hp + heal)
         print(f"You drink a potion and restore {heal} HP. Current HP: {self.player.hp}")
 
     def status(self) -> None:
-        print(f"HP: {self.player.hp}")
-        abilities = ", ".join(self.player.character_class.starting_abilities)
+        print(f"Level: {self.player.level} | XP: {self.player.xp}/{self.xp_needed_for_next_level()}")
+        print(f"HP: {self.player.hp}/{self.player.max_hp}")
+        abilities = ", ".join(self.player.known_abilities)
         cooldown_info = ", ".join(
             f"{name}:{self.player.cooldown_for(name)}"
-            for name in self.player.character_class.starting_abilities
+            for name in self.player.known_abilities
             if self.player.cooldown_for(name) > 0
         ) or "none"
         print(

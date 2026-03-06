@@ -7,4 +7,5 @@ class Quest:
     description: str
     objective: str
     reward: str
+    xp_reward: int = 50
     status: str = "active"  # active | completed

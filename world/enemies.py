@@ -10,6 +10,7 @@ class Enemy:
     attack: int
     defense: int
     description: str
+    xp_reward: int = 35
     max_hp: int | None = None
 
     def __post_init__(self) -> None:
@@ -24,6 +25,7 @@ def create_skeleton() -> Enemy:
         attack=4,
         defense=12,
         description="Animated bones held together by dark magic.",
+        xp_reward=75,
     )
 
 
@@ -35,6 +37,7 @@ def create_wandering_enemy() -> Enemy:
             attack=3,
             defense=10,
             description="A screeching bat dives from the darkness.",
+            xp_reward=30,
         ),
         Enemy(
             name="Goblin Scout",
@@ -42,6 +45,7 @@ def create_wandering_enemy() -> Enemy:
             attack=4,
             defense=11,
             description="A sneaky goblin appears from a side corridor.",
+            xp_reward=40,
         ),
     ]
     return variants[roll(len(variants)) - 1]
