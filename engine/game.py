@@ -12,6 +12,7 @@ from engine.combat import (
 )
 from engine.dice import roll
 from engine.equipment import EquipmentSlot
+from engine.events import EventManager, GameEvent
 from engine.factions import FACTIONS, clamp_reputation, hostility_from_reputation, reputation_tier
 from engine.item import Item
 from engine.item_generator import generate_item
@@ -41,6 +42,7 @@ class Game:
         self.victory_announced = False
         self.generated_room_counter = 0
         self.class_selected = False
+        self.events = EventManager()
 
         self.quests: dict[str, Quest] = {}
         self.quest_templates: dict[str, Quest] = {
@@ -53,6 +55,57 @@ class Game:
                 status="active",
             )
         }
+        self._register_event_handlers()
+
+    def _register_event_handlers(self) -> None:
+        self.events.register("on_enter_room", self._on_enter_room)
+        self.events.register("on_enemy_killed", self._on_enemy_killed)
+        self.events.register("on_level_up", self._on_level_up)
+        self.events.register("on_quest_completed", self._on_quest_completed)
+
+    def _on_enter_room(self, event: GameEvent) -> None:
+        _ = event
+        self._resolve_hostile_npcs_on_sight()
+
+    def _on_enemy_killed(self, event: GameEvent) -> None:
+        enemy = event.context.get("enemy")
+        room = event.context.get("room")
+        if not isinstance(enemy, Enemy) or not isinstance(room, Room):
+            return
+
+        self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
+        self.change_reputation(enemy.faction, -6, f"killed {enemy.name}")
+
+        if enemy.loot_table is not None:
+            rolled_item_id = enemy.loot_table.roll()
+            if rolled_item_id:
+                dropped_item = item_from_id(rolled_item_id)
+                if dropped_item is not None:
+                    room.items.append(dropped_item)
+                    print(f"Loot dropped: {dropped_item.name} (from {enemy.name})")
+
+        if isinstance(enemy, Boss) and enemy.unique_loot:
+            for loot_name in enemy.unique_loot:
+                loot_item = Item(name=loot_name, description=f"Dropped by {enemy.name}")
+                room.items.append(loot_item)
+            print(f"Boss loot dropped: {', '.join(enemy.unique_loot)}")
+
+    def _on_level_up(self, event: GameEvent) -> None:
+        _ = event
+        self._try_unlock_ability()
+
+    def _on_quest_completed(self, event: GameEvent) -> None:
+        quest = event.context.get("quest")
+        if not isinstance(quest, Quest):
+            return
+
+        self.gain_xp(quest.xp_reward, f"completing quest '{quest.name}'")
+        if quest.name == "skeleton bounty":
+            crypt = self.rooms["crypt"]
+            if not self._alive_room_enemies(crypt):
+                crypt.enemy = create_crypt_lord()
+                crypt.enemies = []
+                print("A dark tremor shakes the crypt... The Crypt Lord has appeared!")
 
     @staticmethod
     def _find_item_by_name(items: list[Item], item_name: str) -> Item | None:
@@ -448,7 +501,7 @@ class Game:
 
         print(describe_event({"type": "load"}))
         print(f"Game loaded from {self.SAVE_PATH}.")
-        self._resolve_hostile_npcs_on_sight()
+        self.events.emit("on_enter_room", {"room_id": self.player.current_room})
         self.describe_room()
 
     def describe_room(self) -> None:
@@ -610,8 +663,7 @@ class Game:
         print(f"*** Level up! You reached level {self.player.level}. ***")
         print(f"Max HP increased to {self.player.max_hp}. HP fully restored.")
         print(f"{stat_name} increased by 1.")
-
-        self._try_unlock_ability()
+        self.events.emit("on_level_up", {"level": self.player.level})
 
     def gain_xp(self, amount: int, source: str) -> None:
         if amount <= 0:
@@ -640,14 +692,7 @@ class Game:
         self.player.inventory.append(reward_item)
         print(f"Quest completed: {quest.name}")
         print(f"You receive reward: {quest.reward}")
-        self.gain_xp(quest.xp_reward, f"completing quest '{quest.name}'")
-
-        if quest.name == "skeleton bounty":
-            crypt = self.rooms["crypt"]
-            if not self._alive_room_enemies(crypt):
-                crypt.enemy = create_crypt_lord()
-                crypt.enemies = []
-                print("A dark tremor shakes the crypt... The Crypt Lord has appeared!")
+        self.events.emit("on_quest_completed", {"quest": quest})
 
     @staticmethod
     def _format_item_bonuses(item: Item) -> str:
@@ -884,7 +929,7 @@ class Game:
 
         self.player.current_room = target
         self.trigger_random_encounter()
-        self._resolve_hostile_npcs_on_sight()
+        self.events.emit("on_enter_room", {"room_id": self.player.current_room})
         self.describe_room()
 
     def search(self) -> None:
@@ -931,22 +976,7 @@ class Game:
         print("Inventory:", ", ".join(item.name for item in self.player.inventory))
 
     def _handle_enemy_defeat(self, enemy: Enemy, room: Room) -> None:
-        self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
-        self.change_reputation(enemy.faction, -6, f"killed {enemy.name}")
-
-        if enemy.loot_table is not None:
-            rolled_item_id = enemy.loot_table.roll()
-            if rolled_item_id:
-                dropped_item = item_from_id(rolled_item_id)
-                if dropped_item is not None:
-                    room.items.append(dropped_item)
-                    print(f"Loot dropped: {dropped_item.name} (from {enemy.name})")
-
-        if isinstance(enemy, Boss) and enemy.unique_loot:
-            for loot_name in enemy.unique_loot:
-                loot_item = Item(name=loot_name, description=f"Dropped by {enemy.name}")
-                room.items.append(loot_item)
-            print(f"Boss loot dropped: {', '.join(enemy.unique_loot)}")
+        self.events.emit("on_enemy_killed", {"enemy": enemy, "room": room})
 
     def attack(self) -> None:
         room = self.rooms[self.player.current_room]
@@ -1056,7 +1086,7 @@ class Game:
             # load may have failed; fallback to class prompt
             self._prompt_class_selection()
         if not loaded_at_start:
-            self._resolve_hostile_npcs_on_sight()
+            self.events.emit("on_enter_room", {"room_id": self.player.current_room})
             self.describe_room()
 
         while self.player.hp > 0:

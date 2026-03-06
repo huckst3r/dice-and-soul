@@ -229,3 +229,18 @@ python3 rpg_engine.py
   - `of Venom` — шанс наложить `poison`
   - `of Giants` — бонус к `STR`
 - Сгенерированные предметы полностью совместимы с инвентарем, экипировкой и `save`/`load`.
+
+
+## Global events
+
+- Добавлен модуль `engine/events.py` с `GameEvent` и `EventManager`.
+- `EventManager` поддерживает:
+  - `register(event_name, handler)`
+  - `emit(event_name, context)`
+- В движке добавлены базовые события:
+  - `on_enter_room`
+  - `on_enemy_killed`
+  - `on_level_up`
+  - `on_quest_completed`
+- Системы игры теперь испускают события вместо прямого запуска части вторичной логики (дроп, XP за квест, реакции на вход в комнату и т.д.).
+- Дополнительные подсистемы могут подписываться на эти события через `game.events.register(...)`.
