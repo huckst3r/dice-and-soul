@@ -12,7 +12,7 @@ from engine.combat import (
 )
 from engine.dice import roll
 from engine.equipment import EquipmentSlot
-from engine.factions import FACTIONS, clamp_reputation, hostility_from_reputation
+from engine.factions import FACTIONS, clamp_reputation, hostility_from_reputation, reputation_tier
 from engine.item import Item
 from engine.narrative import describe_event
 from engine.player import Player
@@ -82,11 +82,26 @@ class Game:
 
     def _npc_reputation_line(self, faction: str) -> str:
         rep = self.reputation_for(faction)
-        if rep <= -20:
+        if reputation_tier(rep) == "hostile":
             return "I know your reputation. Tread carefully."
-        if rep >= 20:
+        if reputation_tier(rep) == "friendly":
             return "Your deeds are known. You are welcome here."
         return "We'll see what kind of person you truly are."
+
+    def _hostile_npcs_in_room(self, room: Room) -> list:
+        return [npc for npc in room.npcs if hostility_from_reputation(self.reputation_for(npc.faction)) == "hostile"]
+
+    def _resolve_hostile_npcs_on_sight(self) -> None:
+        room = self.rooms[self.player.current_room]
+        hostile_npcs = self._hostile_npcs_in_room(room)
+        if not hostile_npcs:
+            return
+        names = ", ".join(npc.name for npc in hostile_npcs)
+        total_damage = 0
+        for _ in hostile_npcs:
+            total_damage += max(0, roll(4) - self.player.cha_mod)
+        self.player.hp -= total_damage
+        print(f"Hostile NPCs attack on sight ({names}) for {total_damage} damage! HP: {self.player.hp}")
 
     @staticmethod
     def _room_enemies(room: Room) -> list[Enemy]:
@@ -422,6 +437,7 @@ class Game:
 
         print(describe_event({"type": "load"}))
         print(f"Game loaded from {self.SAVE_PATH}.")
+        self._resolve_hostile_npcs_on_sight()
         self.describe_room()
 
     def describe_room(self) -> None:
@@ -440,6 +456,9 @@ class Game:
                     print(f"  Abilities: {', '.join(enemy.unique_abilities)}")
         if room.npcs:
             print("NPCs:", ", ".join(npc.name for npc in room.npcs))
+            hostile_npcs = self._hostile_npcs_in_room(room)
+            if hostile_npcs:
+                print("Hostile presence:", ", ".join(npc.name for npc in hostile_npcs))
         if room.items:
             print("Items:", ", ".join(item.name for item in room.items))
         print("Exits:", ", ".join(room.exits.keys()))
@@ -457,6 +476,10 @@ class Game:
         npc = self._find_npc_by_name(npc_name)
         if not npc:
             print(f"There is no '{npc_name}' here.")
+            return
+
+        if hostility_from_reputation(self.reputation_for(npc.faction)) == "hostile":
+            print(f"{npc.name} refuses to talk and reaches for a weapon.")
             return
 
         npc.record_talk()
@@ -517,7 +540,8 @@ class Game:
         if not offering_npc:
             print(f"No NPC here offers quest '{quest_name}'.")
             return
-        if self.reputation_for(offering_npc.faction) <= -15:
+        stance = hostility_from_reputation(self.reputation_for(offering_npc.faction))
+        if stance == "hostile":
             print(f"Your reputation with {offering_npc.faction} is too low to receive this quest.")
             return
 
@@ -534,6 +558,15 @@ class Game:
             xp_reward=template.xp_reward,
             status="active",
         )
+        if stance == "friendly":
+            quest = self.quests[quest_name]
+            quest.xp_reward += 25
+            goodwill_item = Item(
+                name=f"{offering_npc.faction} favor",
+                description=f"A gift granted for high reputation with {offering_npc.faction}.",
+            )
+            self.player.inventory.append(goodwill_item)
+            print(f"Friendly reputation bonus: +25 quest XP and gift item '{goodwill_item.name}'.")
         print(f"Quest accepted: {template.name}")
 
     def _is_quest_objective_completed(self, quest: Quest) -> bool:
@@ -834,6 +867,7 @@ class Game:
 
         self.player.current_room = target
         self.trigger_random_encounter()
+        self._resolve_hostile_npcs_on_sight()
         self.describe_room()
 
     def search(self) -> None:
@@ -996,6 +1030,7 @@ class Game:
             # load may have failed; fallback to class prompt
             self._prompt_class_selection()
         if not loaded_at_start:
+            self._resolve_hostile_npcs_on_sight()
             self.describe_room()
 
         while self.player.hp > 0:
