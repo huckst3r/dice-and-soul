@@ -12,6 +12,7 @@ from engine.combat import (
 )
 from engine.dice import roll
 from engine.equipment import EquipmentSlot
+from engine.factions import FACTIONS, clamp_reputation, hostility_from_reputation
 from engine.item import Item
 from engine.narrative import describe_event
 from engine.player import Player
@@ -66,6 +67,26 @@ class Game:
             if npc.name.lower() == npc_name:
                 return npc
         return None
+
+    def reputation_for(self, faction: str) -> int:
+        return int(self.player.reputation.get(faction, 0))
+
+    def change_reputation(self, faction: str, delta: int, reason: str) -> None:
+        if faction not in FACTIONS:
+            return
+        old_value = self.reputation_for(faction)
+        new_value = clamp_reputation(old_value + delta)
+        self.player.reputation[faction] = new_value
+        sign = "+" if delta >= 0 else ""
+        print(f"Reputation with {faction}: {old_value} -> {new_value} ({sign}{delta}) [{reason}]")
+
+    def _npc_reputation_line(self, faction: str) -> str:
+        rep = self.reputation_for(faction)
+        if rep <= -20:
+            return "I know your reputation. Tread carefully."
+        if rep >= 20:
+            return "Your deeds are known. You are welcome here."
+        return "We'll see what kind of person you truly are."
 
     @staticmethod
     def _room_enemies(room: Room) -> list[Enemy]:
@@ -145,6 +166,7 @@ class Game:
             "attack": enemy.attack,
             "defense": enemy.defense,
             "description": enemy.description,
+            "faction": enemy.faction,
             "xp_reward": enemy.xp_reward,
             "max_hp": enemy.max_hp,
             "active_effects": [serialize_effect(effect) for effect in enemy.active_effects],
@@ -165,6 +187,7 @@ class Game:
             "attack": int(data.get("attack", 1)),
             "defense": int(data.get("defense", 10)),
             "description": data.get("description", ""),
+            "faction": data.get("faction", "bandits"),
             "xp_reward": int(data.get("xp_reward", 35)),
             "max_hp": int(data.get("max_hp", data.get("hp", 1))),
             "active_effects": [
@@ -282,6 +305,7 @@ class Game:
                 "character_class": self.player.character_class.name,
                 "ability_cooldowns": self.player.ability_cooldowns,
                 "known_abilities": self.player.known_abilities,
+                "reputation": self.player.reputation,
                 "active_effects": [serialize_effect(effect) for effect in self.player.active_effects],
                 "equipment": {slot.value: self._item_to_dict(item) if item else None for slot, item in self.player.equipment.items()},
                 "str_stat": self.player.str_stat,
@@ -335,6 +359,7 @@ class Game:
             k: int(v) for k, v in player_data.get("ability_cooldowns", {}).items()
         }
         self.player.known_abilities = list(player_data.get("known_abilities", self.player.character_class.starting_abilities))
+        self.player.reputation = {f: int(player_data.get("reputation", {}).get(f, 0)) for f in FACTIONS}
         self.player.active_effects = [
             effect
             for effect_data in player_data.get("active_effects", [])
@@ -408,7 +433,8 @@ class Game:
             print("Enemies:")
             for enemy in enemies:
                 boss_tag = " [BOSS]" if isinstance(enemy, Boss) else ""
-                print(f"- {enemy.name}{boss_tag} (HP: {enemy.hp})")
+                hostility = hostility_from_reputation(self.reputation_for(enemy.faction))
+                print(f"- {enemy.name}{boss_tag} (HP: {enemy.hp}) [{enemy.faction}, {hostility}]")
                 print(f"  {enemy.description}")
                 if isinstance(enemy, Boss) and enemy.unique_abilities:
                     print(f"  Abilities: {', '.join(enemy.unique_abilities)}")
@@ -442,6 +468,9 @@ class Game:
         }
         print(describe_event({"type": "npc_talk", "npc": npc.name, **memory_context}))
 
+        print(f"Faction: {npc.faction} | Reputation: {self.reputation_for(npc.faction)}")
+        print(self._npc_reputation_line(npc.faction))
+
         contextual_line = npc.get_contextual_dialogue()
         if npc.dialogue:
             random_line = npc.dialogue[roll(len(npc.dialogue)) - 1]
@@ -455,6 +484,7 @@ class Game:
             print(f"There is no '{npc_name}' here.")
             return
         npc.record_help()
+        self.change_reputation(npc.faction, 5, f"helped {npc.name}")
         print(describe_event({"type": "npc_help", "npc": npc.name, "talk_count": npc.memory.get("talk_count", 0)}))
         print(f"You help {npc.name}.")
 
@@ -464,6 +494,7 @@ class Game:
             print(f"There is no '{npc_name}' here.")
             return
         npc.record_attack()
+        self.change_reputation(npc.faction, -10, f"attacked {npc.name}")
         print(describe_event({"type": "npc_attack", "npc": npc.name, "talk_count": npc.memory.get("talk_count", 0)}))
         print(f"You attack {npc.name}. They recoil and avoid you.")
 
@@ -482,8 +513,12 @@ class Game:
             return
 
         room = self.rooms[self.player.current_room]
-        if not any(quest_name in [q.lower() for q in npc.offered_quests] for npc in room.npcs):
+        offering_npc = next((npc for npc in room.npcs if quest_name in [q.lower() for q in npc.offered_quests]), None)
+        if not offering_npc:
             print(f"No NPC here offers quest '{quest_name}'.")
+            return
+        if self.reputation_for(offering_npc.faction) <= -15:
+            print(f"Your reputation with {offering_npc.faction} is too low to receive this quest.")
             return
 
         template = self.quest_templates.get(quest_name)
@@ -762,10 +797,14 @@ class Game:
         enemy_check = roll(20) + self.player.dex_mod
         if enemy_check <= 8:
             if not self._alive_room_enemies(room):
-                room.enemy = create_wandering_enemy()
-                room.enemies = []
-                print(describe_event({"type": "enemy_encounter", "enemy": room.enemy.name}))
-                print(f"A random encounter! {room.enemy.name} appears.")
+                spawned = create_wandering_enemy()
+                if hostility_from_reputation(self.reputation_for(spawned.faction)) == "hostile":
+                    room.enemy = spawned
+                    room.enemies = []
+                    print(describe_event({"type": "enemy_encounter", "enemy": room.enemy.name}))
+                    print(f"A hostile encounter! {room.enemy.name} appears.")
+                else:
+                    print(f"You notice {spawned.name}, but your reputation with {spawned.faction} avoids combat.")
             return
 
         item_check = roll(20) + self.player.cha_mod
@@ -842,6 +881,7 @@ class Game:
 
     def _handle_enemy_defeat(self, enemy: Enemy, room: Room) -> None:
         self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
+        self.change_reputation(enemy.faction, -6, f"killed {enemy.name}")
         if isinstance(enemy, Boss) and enemy.unique_loot:
             for loot_name in enemy.unique_loot:
                 loot_item = Item(name=loot_name, description=f"Dropped by {enemy.name}")
@@ -895,6 +935,8 @@ class Game:
         )
         player_effects = ", ".join(f"{e.name}:{e.duration}" for e in self.player.active_effects) or "none"
         print(f"Active effects: {player_effects}")
+        rep_line = ", ".join(f"{f}:{self.reputation_for(f)}" for f in FACTIONS)
+        print(f"Reputation: {rep_line}")
         self.show_equipment()
         self.show_inventory()
 

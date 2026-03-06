@@ -16,6 +16,7 @@ class Enemy:
     attack: int
     defense: int
     description: str
+    faction: str = "bandits"
     xp_reward: int = 35
     max_hp: int | None = None
     active_effects: list[StatusEffect] = field(default_factory=list)
@@ -39,6 +40,7 @@ def create_skeleton() -> Enemy:
         attack=4,
         defense=12,
         description="Animated bones held together by dark magic.",
+        faction="cultists",
         xp_reward=75,
     )
 
@@ -51,6 +53,7 @@ def create_wandering_enemy() -> Enemy:
             attack=3,
             defense=10,
             description="A screeching bat dives from the darkness.",
+            faction="bandits",
             xp_reward=30,
         ),
         Enemy(
@@ -59,6 +62,7 @@ def create_wandering_enemy() -> Enemy:
             attack=4,
             defense=11,
             description="A sneaky goblin appears from a side corridor.",
+            faction="bandits",
             xp_reward=40,
         ),
     ]
@@ -72,6 +76,7 @@ def create_necromancer() -> Boss:
         attack=7,
         defense=14,
         description="A robed sorcerer channels grave-magic and whispers to the dead.",
+        faction="cultists",
         xp_reward=220,
         unique_abilities=("bone_storm", "soul_drain"),
         unique_loot=("necromancer's staff", "black grimoire"),
@@ -85,6 +90,7 @@ def create_crypt_lord() -> Boss:
         attack=8,
         defense=15,
         description="An armored death-knight rises from an ancient throne.",
+        faction="cultists",
         xp_reward=280,
         unique_abilities=("grave_cleave", "fear_roar"),
         unique_loot=("lord's sigil", "crypt plate"),
@@ -98,6 +104,7 @@ def create_ancient_golem() -> Boss:
         attack=9,
         defense=16,
         description="A colossal stone guardian awakens with thunderous steps.",
+        faction="mages",
         xp_reward=320,
         unique_abilities=("stone_skin", "seismic_slam"),
         unique_loot=("golem core", "runed stone"),

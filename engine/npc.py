@@ -6,6 +6,7 @@ class NPC:
     name: str
     description: str
     dialogue: list[str]
+    faction: str = "merchants"
     offered_quests: list[str] = field(default_factory=list)
     memory: dict[str, int | bool] = field(
         default_factory=lambda: {

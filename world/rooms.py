@@ -38,6 +38,7 @@ def build_rooms() -> dict[str, Room]:
                         "Keep your blade high and your fear low.",
                         "If you find herbs, keep them. The dark bites hard.",
                     ],
+                    faction="guards",
                     offered_quests=["skeleton bounty"],
                 )
             ],
@@ -55,6 +56,7 @@ def build_rooms() -> dict[str, Room]:
                         "Take what you need, leave what you can.",
                         "Steel wins fights, but timing wins wars.",
                     ],
+                    faction="merchants",
                 )
             ],
         ),
@@ -80,6 +82,7 @@ def build_rooms() -> dict[str, Room]:
                         "Names fade, but choices remain.",
                         "The walls remember every oath.",
                     ],
+                    faction="mages",
                 )
             ],
         ),

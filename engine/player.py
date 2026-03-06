@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from engine.classes import CharacterClass, WARRIOR
 from engine.equipment import EquipmentSlot
+from engine.factions import default_reputation
 from engine.item import Item
 
 if TYPE_CHECKING:
@@ -31,6 +32,7 @@ class Player:
     character_class: CharacterClass = field(default_factory=lambda: WARRIOR)
     ability_cooldowns: dict[str, int] = field(default_factory=dict)
     known_abilities: list[str] = field(default_factory=lambda: list(WARRIOR.starting_abilities))
+    reputation: dict[str, int] = field(default_factory=default_reputation)
     active_effects: list[StatusEffect] = field(default_factory=list)
     equipment: dict[EquipmentSlot, Item | None] = field(
         default_factory=lambda: {
