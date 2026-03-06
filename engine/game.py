@@ -1032,7 +1032,9 @@ class Game:
 
     def _prompt_class_selection(self) -> None:
         print("Choose your class:")
-        for class_name in ("warrior", "rogue", "mage"):
+        class_order = ("warrior", "rogue", "mage")
+        class_by_number = {str(index): class_name for index, class_name in enumerate(class_order, start=1)}
+        for index, class_name in enumerate(class_order, start=1):
             cc = CLASSES_BY_NAME[class_name]
             bonuses = []
             if cc.str_bonus:
@@ -1044,17 +1046,22 @@ class Game:
             if cc.cha_bonus:
                 bonuses.append(f"CHA {cc.cha_bonus:+d}")
             bonus_text = ", ".join(bonuses) if bonuses else "no bonuses"
-            print(f"- {cc.name.lower()}: {cc.description} ({bonus_text}), ability: {', '.join(cc.starting_abilities)}")
+            print(f"{index}) {cc.name.lower()}: {cc.description} ({bonus_text}), ability: {', '.join(cc.starting_abilities)}")
+        print("0) cancel")
 
         while True:
-            raw = input("Class (warrior/rogue/mage): ").strip().lower()
-            selected = CLASSES_BY_NAME.get(raw)
+            raw = input("Class (1/2/3, warrior/rogue/mage, 0=cancel): ").strip().lower()
+            if raw in {"0", "cancel", "c"}:
+                raise SystemExit("Class selection canceled. Exiting game.")
+
+            selected_key = class_by_number.get(raw, raw)
+            selected = CLASSES_BY_NAME.get(selected_key)
             if selected:
                 self.player.assign_class(selected)
                 self.class_selected = True
                 print(f"You chose {selected.name}.")
                 return
-            print("Invalid class. Choose warrior, rogue, or mage.")
+            print("Invalid class. Choose 1/2/3, warrior/rogue/mage, or 0 to cancel.")
 
     def _startup_class_or_load(self) -> bool:
         if self.class_selected:
@@ -1084,7 +1091,11 @@ class Game:
         loaded_at_start = self._startup_class_or_load()
         if not self.class_selected:
             # load may have failed; fallback to class prompt
-            self._prompt_class_selection()
+            try:
+                self._prompt_class_selection()
+            except SystemExit as exc:
+                print(exc)
+                return
         if not loaded_at_start:
             self.events.emit("on_enter_room", {"room_id": self.player.current_room})
             self.describe_room()
