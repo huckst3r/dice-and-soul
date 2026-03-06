@@ -1,4 +1,5 @@
 from engine.dice import roll
+from engine.equipment import EquipmentSlot
 from engine.status_effects import (
     apply_status_effect,
     create_bleed,
@@ -8,6 +9,18 @@ from engine.status_effects import (
     process_status_effects,
 )
 
+
+
+
+def _try_apply_weapon_effects(player, enemy, messages: list[str]) -> None:
+    weapon = player.equipment.get(EquipmentSlot.WEAPON)
+    if not weapon:
+        return
+    effects = set(weapon.special_effects)
+    if "fire_chance" in effects and roll(100) <= 25:
+        apply_status_effect(enemy, create_burn(2), messages, enemy.name)
+    if "venom_chance" in effects and roll(100) <= 25:
+        apply_status_effect(enemy, create_poison(3), messages, enemy.name)
 
 def _try_apply_enemy_status(enemy, player, messages: list[str]) -> None:
     enemy_name = enemy.name.lower()
@@ -43,6 +56,7 @@ def player_attack(player, room) -> tuple[list[str], bool]:
             messages.append(f"Hit! You deal {damage} damage.")
             if roll(100) <= 20:
                 apply_status_effect(enemy, create_bleed(3), messages, enemy.name)
+            _try_apply_weapon_effects(player, enemy, messages)
             if enemy.hp <= 0:
                 messages.append(f"{enemy.name} is defeated!")
                 return messages, True

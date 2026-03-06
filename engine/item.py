@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from engine.equipment import EquipmentSlot
 
@@ -12,3 +12,5 @@ class Item:
     dex_bonus: int = 0
     int_bonus: int = 0
     hp_bonus: int = 0
+    attack_bonus: int = 0
+    special_effects: list[str] = field(default_factory=list)

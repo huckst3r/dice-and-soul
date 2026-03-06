@@ -214,3 +214,18 @@ python3 rpg_engine.py
   - `potion` (10)
   - `rare_ring` (5)
 - Лут-таблицы сериализуются и корректно восстанавливаются при `save`/`load`.
+
+
+## Procedural item generation
+
+- Добавлен модуль `engine/item_generator.py` для процедурной генерации предметов по шаблону `prefix + base item + suffix`.
+- Примеры: `Rusty Sword`, `Ancient Sword of Fire`, `Shadow Dagger of Venom`.
+- Префиксы модифицируют характеристики: 
+  - `Rusty` — снижает боевой бонус
+  - `Ancient` — повышает боевой бонус
+  - `Shadow` — повышает `DEX`
+- Суффиксы добавляют эффекты/бонусы:
+  - `of Fire` — шанс наложить `burn`
+  - `of Venom` — шанс наложить `poison`
+  - `of Giants` — бонус к `STR`
+- Сгенерированные предметы полностью совместимы с инвентарем, экипировкой и `save`/`load`.

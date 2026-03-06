@@ -14,6 +14,7 @@ from engine.dice import roll
 from engine.equipment import EquipmentSlot
 from engine.factions import FACTIONS, clamp_reputation, hostility_from_reputation, reputation_tier
 from engine.item import Item
+from engine.item_generator import generate_item
 from engine.loot import item_from_id, loot_table_from_dict, loot_table_to_dict
 from engine.narrative import describe_event
 from engine.player import Player
@@ -134,6 +135,9 @@ class Game:
 
     @staticmethod
     def _random_loot_item() -> Item:
+        if roll(100) <= 45:
+            return generate_item()
+
         loot_table = [
             Item(name="bandage", description="Simple wrap that might be useful later"),
             Item(name="iron shard", description="A jagged piece of iron"),
@@ -151,6 +155,8 @@ class Game:
             "dex_bonus": item.dex_bonus,
             "int_bonus": item.int_bonus,
             "hp_bonus": item.hp_bonus,
+            "attack_bonus": item.attack_bonus,
+            "special_effects": list(item.special_effects),
         }
 
     @staticmethod
@@ -170,6 +176,8 @@ class Game:
             dex_bonus=int(data.get("dex_bonus", 0)),
             int_bonus=int(data.get("int_bonus", 0)),
             hp_bonus=int(data.get("hp_bonus", 0)),
+            attack_bonus=int(data.get("attack_bonus", 0)),
+            special_effects=[str(effect) for effect in data.get("special_effects", [])],
         )
 
     @staticmethod
@@ -652,6 +660,10 @@ class Game:
             bonuses.append(f"INT {item.int_bonus:+d}")
         if item.hp_bonus:
             bonuses.append(f"HP {item.hp_bonus:+d}")
+        if item.attack_bonus:
+            bonuses.append(f"ATK {item.attack_bonus:+d}")
+        if item.special_effects:
+            bonuses.append(f"FX [{', '.join(item.special_effects)}]")
         return f" ({', '.join(bonuses)})" if bonuses else ""
 
     def _apply_item_bonuses(self, item: Item) -> None:
@@ -660,12 +672,14 @@ class Game:
         self.player.int_stat += item.int_bonus
         self.player.max_hp += item.hp_bonus
         self.player.hp += item.hp_bonus
+        self.player.attack_bonus += item.attack_bonus
 
     def _remove_item_bonuses(self, item: Item) -> None:
         self.player.str_stat -= item.str_bonus
         self.player.dex_stat -= item.dex_bonus
         self.player.int_stat -= item.int_bonus
         self.player.max_hp -= item.hp_bonus
+        self.player.attack_bonus -= item.attack_bonus
         if self.player.hp > self.player.max_hp:
             self.player.hp = self.player.max_hp
 

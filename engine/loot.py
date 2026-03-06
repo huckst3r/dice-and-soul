@@ -61,6 +61,8 @@ def item_from_id(item_id: str) -> Item | None:
         dex_bonus=template.dex_bonus,
         int_bonus=template.int_bonus,
         hp_bonus=template.hp_bonus,
+        attack_bonus=template.attack_bonus,
+        special_effects=list(template.special_effects),
     )
 
 
