@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from engine.item import Item
+from world.enemies import Enemy, create_skeleton
 
 
 @dataclass
@@ -8,8 +9,7 @@ class Room:
     name: str
     description: str
     exits: dict[str, str]
-    enemy: str | None = None
-    enemy_hp: int = 0
+    enemy: Enemy | None = None
     items: list[Item] = field(default_factory=list)
 
 
@@ -31,7 +31,6 @@ def build_rooms() -> dict[str, Room]:
             name="Crypt",
             description="Dark chamber with cracked sarcophagus.",
             exits={"west": "hall"},
-            enemy="Skeleton",
-            enemy_hp=10,
+            enemy=create_skeleton(),
         ),
     }

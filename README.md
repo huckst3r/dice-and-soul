@@ -29,7 +29,8 @@ python3 rpg_engine.py
 - `look` — осмотреть комнату
 - `go <direction>` — перейти (`north/south/east/west`)
 - `search` — поиск (бросок d6)
-- `attack` — атака врага (попадание через d20, урон d6)
+- `attack` — атака врага (попадание через d20 против defense, урон d6)
+- У врагов есть параметры: `name`, `hp`, `attack`, `defense`, `description`; враг отвечает атакой в каждый боевой ход.
 - `take <item>` — поднять предмет из комнаты
 - `drop <item>` — выбросить предмет в комнату
 - `inventory` — показать инвентарь

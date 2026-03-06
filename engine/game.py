@@ -23,8 +23,9 @@ class Game:
         room = self.rooms[self.player.current_room]
         print(f"\n== {room.name} ==")
         print(room.description)
-        if room.enemy and room.enemy_hp > 0:
-            print(f"Enemy here: {room.enemy} (HP: {room.enemy_hp})")
+        if room.enemy and room.enemy.hp > 0:
+            print(f"Enemy here: {room.enemy.name} (HP: {room.enemy.hp})")
+            print(room.enemy.description)
         if room.items:
             print("Items:", ", ".join(item.name for item in room.items))
         print("Exits:", ", ".join(room.exits.keys()))
@@ -79,7 +80,7 @@ class Game:
 
     def attack(self) -> None:
         room = self.rooms[self.player.current_room]
-        if not room.enemy or room.enemy_hp <= 0:
+        if not room.enemy or room.enemy.hp <= 0:
             print("There is nothing to attack.")
             return
 
@@ -103,7 +104,7 @@ class Game:
 
     def won(self) -> bool:
         crypt = self.rooms["crypt"]
-        return crypt.enemy_hp <= 0
+        return bool(crypt.enemy and crypt.enemy.hp <= 0)
 
     def run(self) -> None:
         print("Welcome to Dice & Soul (minimal text RPG).")
