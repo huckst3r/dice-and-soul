@@ -11,6 +11,7 @@ engine/
   dice.py
   combat.py
   player.py
+  item.py
 
 world/
   rooms.py
@@ -29,6 +30,9 @@ python3 rpg_engine.py
 - `go <direction>` — перейти (`north/south/east/west`)
 - `search` — поиск (бросок d6)
 - `attack` — атака врага (попадание через d20, урон d6)
+- `take <item>` — поднять предмет из комнаты
+- `drop <item>` — выбросить предмет в комнату
+- `inventory` — показать инвентарь
 - `potion` — выпить зелье
 - `status` — текущее состояние персонажа
 - `quit` — выход
