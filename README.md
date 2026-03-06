@@ -45,7 +45,7 @@ python3 rpg_engine.py
 - `attack <npc>` — атаковать NPC (меняет отношение NPC)
 - `take <item>` — поднять предмет из комнаты
 - `drop <item>` — выбросить предмет в комнату
-- `inventory` — показать инвентарь
+- `inventory` или `i` — показать инвентарь
 - `equip <item>` — экипировать предмет из инвентаря
 - `unequip <slot>` — снять предмет из слота (`weapon`, `armor`, `ring`)
 - `equipment` — показать текущее снаряжение
@@ -64,7 +64,6 @@ python3 rpg_engine.py
 - `s` → `go south`
 - `e` → `go east`
 - `w` → `go west`
-- `i` → `inventory`
 
 ## Случайные события при перемещении
 
