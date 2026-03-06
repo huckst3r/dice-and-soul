@@ -18,7 +18,7 @@ from engine.player import Player
 from engine.quest import Quest
 from engine.status_effects import deserialize_effect, serialize_effect
 from engine.world import create_world
-from world.enemies import Enemy, create_wandering_enemy
+from world.enemies import Boss, Enemy, create_crypt_lord, create_random_boss, create_wandering_enemy
 from world.rooms import Room
 
 
@@ -139,7 +139,7 @@ class Game:
     def _enemy_to_dict(enemy: Enemy | None) -> dict | None:
         if enemy is None:
             return None
-        return {
+        payload = {
             "name": enemy.name,
             "hp": enemy.hp,
             "attack": enemy.attack,
@@ -148,26 +148,38 @@ class Game:
             "xp_reward": enemy.xp_reward,
             "max_hp": enemy.max_hp,
             "active_effects": [serialize_effect(effect) for effect in enemy.active_effects],
+            "enemy_type": "boss" if isinstance(enemy, Boss) else "enemy",
         }
+        if isinstance(enemy, Boss):
+            payload["unique_abilities"] = list(enemy.unique_abilities)
+            payload["unique_loot"] = list(enemy.unique_loot)
+        return payload
 
     @staticmethod
     def _enemy_from_dict(data: dict | None) -> Enemy | None:
         if data is None:
             return None
-        return Enemy(
-            name=data.get("name", "Unknown Enemy"),
-            hp=int(data.get("hp", 1)),
-            attack=int(data.get("attack", 1)),
-            defense=int(data.get("defense", 10)),
-            description=data.get("description", ""),
-            xp_reward=int(data.get("xp_reward", 35)),
-            max_hp=int(data.get("max_hp", data.get("hp", 1))),
-            active_effects=[
+        common = {
+            "name": data.get("name", "Unknown Enemy"),
+            "hp": int(data.get("hp", 1)),
+            "attack": int(data.get("attack", 1)),
+            "defense": int(data.get("defense", 10)),
+            "description": data.get("description", ""),
+            "xp_reward": int(data.get("xp_reward", 35)),
+            "max_hp": int(data.get("max_hp", data.get("hp", 1))),
+            "active_effects": [
                 effect
                 for effect_data in data.get("active_effects", [])
                 if (effect := deserialize_effect(effect_data)) is not None
             ],
-        )
+        }
+        if data.get("enemy_type") == "boss":
+            return Boss(
+                **common,
+                unique_abilities=tuple(data.get("unique_abilities", [])),
+                unique_loot=tuple(data.get("unique_loot", [])),
+            )
+        return Enemy(**common)
 
     @staticmethod
     def _quest_to_dict(quest: Quest) -> dict[str, str]:
@@ -234,7 +246,9 @@ class Game:
             exits={},
         )
 
-        if roll(100) <= 35:
+        if roll(100) <= 12:
+            room.enemy = create_random_boss()
+        elif roll(100) <= 35:
             room.enemy = create_wandering_enemy()
         if roll(100) <= 45:
             room.items.append(self._random_loot_item())
@@ -393,8 +407,11 @@ class Game:
         if enemies:
             print("Enemies:")
             for enemy in enemies:
-                print(f"- {enemy.name} (HP: {enemy.hp})")
+                boss_tag = " [BOSS]" if isinstance(enemy, Boss) else ""
+                print(f"- {enemy.name}{boss_tag} (HP: {enemy.hp})")
                 print(f"  {enemy.description}")
+                if isinstance(enemy, Boss) and enemy.unique_abilities:
+                    print(f"  Abilities: {', '.join(enemy.unique_abilities)}")
         if room.npcs:
             print("NPCs:", ", ".join(npc.name for npc in room.npcs))
         if room.items:
@@ -546,6 +563,13 @@ class Game:
         print(f"You receive reward: {quest.reward}")
         self.gain_xp(quest.xp_reward, f"completing quest '{quest.name}'")
 
+        if quest.name == "skeleton bounty":
+            crypt = self.rooms["crypt"]
+            if not self._alive_room_enemies(crypt):
+                crypt.enemy = create_crypt_lord()
+                crypt.enemies = []
+                print("A dark tremor shakes the crypt... The Crypt Lord has appeared!")
+
     @staticmethod
     def _format_item_bonuses(item: Item) -> str:
         bonuses = []
@@ -690,7 +714,8 @@ class Game:
             print(message)
 
         if enemy.hp <= 0:
-            self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
+            self._handle_enemy_defeat(enemy, room)
+            self._cleanup_room_enemies(room)
             return
         if self.player.hp <= 0:
             return
@@ -717,7 +742,7 @@ class Game:
         defeated_now = [target for target in self._room_enemies(room) if target.hp <= 0]
         for defeated_enemy in defeated_now:
             print(f"{defeated_enemy.name} is defeated!")
-            self.gain_xp(defeated_enemy.xp_reward, f"defeating {defeated_enemy.name}")
+            self._handle_enemy_defeat(defeated_enemy, room)
         self._cleanup_room_enemies(room)
         if not self._alive_room_enemies(room):
             return
@@ -815,6 +840,14 @@ class Game:
             return
         print("Inventory:", ", ".join(item.name for item in self.player.inventory))
 
+    def _handle_enemy_defeat(self, enemy: Enemy, room: Room) -> None:
+        self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
+        if isinstance(enemy, Boss) and enemy.unique_loot:
+            for loot_name in enemy.unique_loot:
+                loot_item = Item(name=loot_name, description=f"Dropped by {enemy.name}")
+                room.items.append(loot_item)
+            print(f"Boss loot dropped: {', '.join(enemy.unique_loot)}")
+
     def attack(self) -> None:
         room = self.rooms[self.player.current_room]
         self._cleanup_room_enemies(room)
@@ -822,13 +855,12 @@ class Game:
             print("There is nothing to attack.")
             return
 
-        enemy_name = room.enemy.name
-        enemy_xp = room.enemy.xp_reward
+        target_enemy = room.enemy
         messages, defeated = player_attack(self.player, room)
         for message in messages:
             print(message)
-        if defeated:
-            self.gain_xp(enemy_xp, f"defeating {enemy_name}")
+        if defeated and target_enemy is not None:
+            self._handle_enemy_defeat(target_enemy, room)
         self._cleanup_room_enemies(room)
 
     def use_potion(self) -> None:

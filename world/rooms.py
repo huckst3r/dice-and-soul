@@ -3,7 +3,12 @@ from dataclasses import dataclass, field
 from engine.equipment import EquipmentSlot
 from engine.item import Item
 from engine.npc import NPC
-from world.enemies import Enemy, create_skeleton
+from world.enemies import (
+    Enemy,
+    create_ancient_golem,
+    create_necromancer,
+    create_skeleton,
+)
 
 
 @dataclass
@@ -62,7 +67,7 @@ def build_rooms() -> dict[str, Room]:
         "hidden_sanctum": Room(
             name="Hidden Sanctum",
             description="A secret chamber with faded runes and a faint golden glow.",
-            exits={},
+            exits={"down": "forgotten_vault", "east": "obsidian_nexus"},
             items=[
                 Item(name="ancient coin", description="An old coin with unknown symbols"),
                 Item(name="silver ring", description="A ring etched with tiny runes.", slot=EquipmentSlot.RING, int_bonus=1),
@@ -77,5 +82,17 @@ def build_rooms() -> dict[str, Room]:
                     ],
                 )
             ],
+        ),
+        "forgotten_vault": Room(
+            name="Forgotten Vault",
+            description="A sealed chamber crowded with funerary statues and green mist.",
+            exits={"up": "hidden_sanctum"},
+            enemy=create_necromancer(),
+        ),
+        "obsidian_nexus": Room(
+            name="Obsidian Nexus",
+            description="A cavern of black crystal pulsing with old defensive magic.",
+            exits={"west": "hidden_sanctum"},
+            enemy=create_ancient_golem(),
         ),
     }
