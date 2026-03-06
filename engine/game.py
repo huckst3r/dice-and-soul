@@ -14,6 +14,7 @@ from engine.dice import roll
 from engine.equipment import EquipmentSlot
 from engine.factions import FACTIONS, clamp_reputation, hostility_from_reputation, reputation_tier
 from engine.item import Item
+from engine.loot import item_from_id, loot_table_from_dict, loot_table_to_dict
 from engine.narrative import describe_event
 from engine.player import Player
 from engine.quest import Quest
@@ -185,6 +186,7 @@ class Game:
             "xp_reward": enemy.xp_reward,
             "max_hp": enemy.max_hp,
             "active_effects": [serialize_effect(effect) for effect in enemy.active_effects],
+            "loot_table": loot_table_to_dict(enemy.loot_table),
             "enemy_type": "boss" if isinstance(enemy, Boss) else "enemy",
         }
         if isinstance(enemy, Boss):
@@ -210,6 +212,7 @@ class Game:
                 for effect_data in data.get("active_effects", [])
                 if (effect := deserialize_effect(effect_data)) is not None
             ],
+            "loot_table": loot_table_from_dict(data.get("loot_table")),
         }
         if data.get("enemy_type") == "boss":
             return Boss(
@@ -916,6 +919,15 @@ class Game:
     def _handle_enemy_defeat(self, enemy: Enemy, room: Room) -> None:
         self.gain_xp(enemy.xp_reward, f"defeating {enemy.name}")
         self.change_reputation(enemy.faction, -6, f"killed {enemy.name}")
+
+        if enemy.loot_table is not None:
+            rolled_item_id = enemy.loot_table.roll()
+            if rolled_item_id:
+                dropped_item = item_from_id(rolled_item_id)
+                if dropped_item is not None:
+                    room.items.append(dropped_item)
+                    print(f"Loot dropped: {dropped_item.name} (from {enemy.name})")
+
         if isinstance(enemy, Boss) and enemy.unique_loot:
             for loot_name in enemy.unique_loot:
                 loot_item = Item(name=loot_name, description=f"Dropped by {enemy.name}")
