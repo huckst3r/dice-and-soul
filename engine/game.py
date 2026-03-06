@@ -6,6 +6,7 @@ from engine.classes import CLASSES_BY_NAME, get_character_class
 from engine.command_parser import parse_command
 from engine.combat import player_attack
 from engine.dice import roll
+from engine.equipment import EquipmentSlot
 from engine.item import Item
 from engine.narrative import describe_event
 from engine.player import Player
@@ -70,12 +71,35 @@ class Game:
         return loot_table[roll(len(loot_table)) - 1]
 
     @staticmethod
-    def _item_to_dict(item: Item) -> dict[str, str]:
-        return {"name": item.name, "description": item.description}
+    def _item_to_dict(item: Item) -> dict:
+        return {
+            "name": item.name,
+            "description": item.description,
+            "slot": item.slot.value if item.slot else None,
+            "str_bonus": item.str_bonus,
+            "dex_bonus": item.dex_bonus,
+            "int_bonus": item.int_bonus,
+            "hp_bonus": item.hp_bonus,
+        }
 
     @staticmethod
     def _item_from_dict(data: dict) -> Item:
-        return Item(name=data.get("name", "unknown item"), description=data.get("description", ""))
+        slot_value = data.get("slot")
+        slot = None
+        if slot_value:
+            try:
+                slot = EquipmentSlot(slot_value)
+            except ValueError:
+                slot = None
+        return Item(
+            name=data.get("name", "unknown item"),
+            description=data.get("description", ""),
+            slot=slot,
+            str_bonus=int(data.get("str_bonus", 0)),
+            dex_bonus=int(data.get("dex_bonus", 0)),
+            int_bonus=int(data.get("int_bonus", 0)),
+            hp_bonus=int(data.get("hp_bonus", 0)),
+        )
 
     @staticmethod
     def _enemy_to_dict(enemy: Enemy | None) -> dict | None:
@@ -204,6 +228,7 @@ class Game:
                 "character_class": self.player.character_class.name,
                 "ability_cooldowns": self.player.ability_cooldowns,
                 "known_abilities": self.player.known_abilities,
+                "equipment": {slot.value: self._item_to_dict(item) if item else None for slot, item in self.player.equipment.items()},
                 "str_stat": self.player.str_stat,
                 "dex_stat": self.player.dex_stat,
                 "int_stat": self.player.int_stat,
@@ -259,6 +284,19 @@ class Game:
         self.player.int_stat = int(player_data.get("int_stat", 10))
         self.player.cha_stat = int(player_data.get("cha_stat", 9))
         self.player.inventory = [self._item_from_dict(it) for it in player_data.get("inventory", [])]
+        equipment_data = player_data.get("equipment", {})
+        self.player.equipment = {
+            EquipmentSlot.WEAPON: None,
+            EquipmentSlot.ARMOR: None,
+            EquipmentSlot.RING: None,
+        }
+        for slot_name, item_data in equipment_data.items():
+            try:
+                slot = EquipmentSlot(slot_name)
+            except ValueError:
+                continue
+            if item_data:
+                self.player.equipment[slot] = self._item_from_dict(item_data)
 
         flags = data.get("flags", {})
         self.chest_opened = bool(flags.get("chest_opened", False))
@@ -452,6 +490,80 @@ class Game:
         print(f"You receive reward: {quest.reward}")
         self.gain_xp(quest.xp_reward, f"completing quest '{quest.name}'")
 
+    @staticmethod
+    def _format_item_bonuses(item: Item) -> str:
+        bonuses = []
+        if item.str_bonus:
+            bonuses.append(f"STR {item.str_bonus:+d}")
+        if item.dex_bonus:
+            bonuses.append(f"DEX {item.dex_bonus:+d}")
+        if item.int_bonus:
+            bonuses.append(f"INT {item.int_bonus:+d}")
+        if item.hp_bonus:
+            bonuses.append(f"HP {item.hp_bonus:+d}")
+        return f" ({', '.join(bonuses)})" if bonuses else ""
+
+    def _apply_item_bonuses(self, item: Item) -> None:
+        self.player.str_stat += item.str_bonus
+        self.player.dex_stat += item.dex_bonus
+        self.player.int_stat += item.int_bonus
+        self.player.max_hp += item.hp_bonus
+        self.player.hp += item.hp_bonus
+
+    def _remove_item_bonuses(self, item: Item) -> None:
+        self.player.str_stat -= item.str_bonus
+        self.player.dex_stat -= item.dex_bonus
+        self.player.int_stat -= item.int_bonus
+        self.player.max_hp -= item.hp_bonus
+        if self.player.hp > self.player.max_hp:
+            self.player.hp = self.player.max_hp
+
+    def equip_item(self, item_name: str) -> None:
+        item = self._find_item_by_name(self.player.inventory, item_name)
+        if not item:
+            print(f"You do not have '{item_name}'.")
+            return
+        if item.slot is None:
+            print(f"{item.name} cannot be equipped.")
+            return
+
+        current = self.player.equipment.get(item.slot)
+        if current:
+            self._remove_item_bonuses(current)
+            self.player.inventory.append(current)
+            print(f"You unequip {current.name} from {item.slot.value}.")
+
+        self.player.inventory.remove(item)
+        self.player.equipment[item.slot] = item
+        self._apply_item_bonuses(item)
+        print(f"You equip {item.name} to {item.slot.value}{self._format_item_bonuses(item)}.")
+
+    def unequip_item(self, slot_name: str) -> None:
+        try:
+            slot = EquipmentSlot(slot_name.strip().lower())
+        except ValueError:
+            print("Unknown equipment slot. Use: weapon, armor, ring.")
+            return
+
+        item = self.player.equipment.get(slot)
+        if not item:
+            print(f"Nothing is equipped in {slot.value}.")
+            return
+
+        self.player.equipment[slot] = None
+        self._remove_item_bonuses(item)
+        self.player.inventory.append(item)
+        print(f"You unequip {item.name} from {slot.value}.")
+
+    def show_equipment(self) -> None:
+        print("Equipment:")
+        for slot in (EquipmentSlot.WEAPON, EquipmentSlot.ARMOR, EquipmentSlot.RING):
+            equipped = self.player.equipment.get(slot)
+            if equipped:
+                print(f"- {slot.value}: {equipped.name}{self._format_item_bonuses(equipped)}")
+            else:
+                print(f"- {slot.value}: empty")
+
     def look_object(self, object_name: str) -> None:
         room = self.rooms[self.player.current_room]
         npc = self._find_npc_by_name(object_name)
@@ -461,12 +573,12 @@ class Game:
 
         item = self._find_item_by_name(room.items, object_name)
         if item:
-            print(f"{item.name}: {item.description}")
+            print(f"{item.name}: {item.description}{self._format_item_bonuses(item)}")
             return
 
         inv_item = self._find_item_by_name(self.player.inventory, object_name)
         if inv_item:
-            print(f"{inv_item.name} (inventory): {inv_item.description}")
+            print(f"{inv_item.name} (inventory): {inv_item.description}{self._format_item_bonuses(inv_item)}")
             return
 
         print(f"You see no '{object_name}' here.")
@@ -642,6 +754,7 @@ class Game:
             f"INT {self.player.int_stat} ({self.player.int_mod:+d}), "
             f"CHA {self.player.cha_stat} ({self.player.cha_mod:+d})"
         )
+        self.show_equipment()
         self.show_inventory()
 
     def _prompt_class_selection(self) -> None:
@@ -691,8 +804,8 @@ class Game:
         print("Welcome to Dice & Soul (minimal text RPG).")
         print(
             "Commands: look [object], talk <npc>, help <npc>, attack [enemy|npc], go <direction>, "
-            "search, take <item>, drop <item>, inventory, quests, accept <quest>, complete <quest>, "
-            "use <ability> <target>, potion, save, load, status, quit"
+            "search, take <item>, drop <item>, inventory, equip <item>, unequip <slot>, equipment, "
+            "quests, accept <quest>, complete <quest>, use <ability> <target>, potion, save, load, status, quit"
         )
         print("Aliases: n/s/e/w -> go north/south/east/west, i -> inventory")
         loaded_at_start = self._startup_class_or_load()
@@ -765,6 +878,18 @@ class Game:
                     self.drop_item(" ".join(args))
             elif command == "inventory":
                 self.show_inventory()
+            elif command == "equip":
+                if not args:
+                    print("Equip what?")
+                else:
+                    self.equip_item(" ".join(args))
+            elif command == "unequip":
+                if not args:
+                    print("Unequip which slot?")
+                else:
+                    self.unequip_item(args[0])
+            elif command == "equipment":
+                self.show_equipment()
             elif command == "quests":
                 self.list_quests()
             elif command == "accept":

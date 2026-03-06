@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from engine.equipment import EquipmentSlot
 from engine.item import Item
 from engine.npc import NPC
 from world.enemies import Enemy, create_skeleton
@@ -39,7 +40,7 @@ def build_rooms() -> dict[str, Room]:
             name="Armory",
             description="Dusty racks with broken spears. A chest stands in the corner.",
             exits={"south": "hall"},
-            items=[Item(name="dagger", description="A short steel dagger")],
+            items=[Item(name="dagger", description="A short steel dagger", slot=EquipmentSlot.WEAPON, dex_bonus=1)],
             npcs=[
                 NPC(
                     name="quartermaster",
@@ -61,7 +62,10 @@ def build_rooms() -> dict[str, Room]:
             name="Hidden Sanctum",
             description="A secret chamber with faded runes and a faint golden glow.",
             exits={},
-            items=[Item(name="ancient coin", description="An old coin with unknown symbols")],
+            items=[
+                Item(name="ancient coin", description="An old coin with unknown symbols"),
+                Item(name="silver ring", description="A ring etched with tiny runes.", slot=EquipmentSlot.RING, int_bonus=1),
+            ],
             npcs=[
                 NPC(
                     name="whispering spirit",

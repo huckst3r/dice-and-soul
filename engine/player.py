@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 from engine.classes import CharacterClass, WARRIOR
+from engine.equipment import EquipmentSlot
 from engine.item import Item
 
 BASE_STR = 12
@@ -24,8 +25,17 @@ class Player:
     character_class: CharacterClass = field(default_factory=lambda: WARRIOR)
     ability_cooldowns: dict[str, int] = field(default_factory=dict)
     known_abilities: list[str] = field(default_factory=lambda: list(WARRIOR.starting_abilities))
+    equipment: dict[EquipmentSlot, Item | None] = field(
+        default_factory=lambda: {
+            EquipmentSlot.WEAPON: None,
+            EquipmentSlot.ARMOR: None,
+            EquipmentSlot.RING: None,
+        }
+    )
     inventory: list[Item] = field(
-        default_factory=lambda: [Item(name="rusty sword", description="Old but usable blade")]
+        default_factory=lambda: [
+            Item(name="rusty sword", description="Old but usable blade", slot=EquipmentSlot.WEAPON, str_bonus=1)
+        ]
     )
 
     def __post_init__(self) -> None:
