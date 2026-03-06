@@ -2,6 +2,21 @@
 
 Минимальный text RPG engine на Python с комнатами и dice mechanics.
 
+## Структура
+
+```text
+engine/
+  game.py
+  world.py
+  dice.py
+  combat.py
+  player.py
+
+world/
+  rooms.py
+  enemies.py
+```
+
 ## Запуск
 
 ```bash
